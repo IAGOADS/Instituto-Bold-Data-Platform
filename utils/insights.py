@@ -1,5 +1,6 @@
 # utils/insights.py
 import os
+import io
 import json
 import requests
 import pandas as pd
@@ -25,10 +26,10 @@ def generate_heuristic_fallback(df, status_txt):
         insights.append(f"<strong>Mapeamento Socioeconômico:</strong> O programa registra <strong>{pct_baixa:.1f}%</strong> de perfis de baixa renda elegíveis para impacto social.")
     return insights
 
-@st.cache_data(show_spinner=False)
-def _executar_chamada_perplexity_protegida(df_json, status_txt, temporal_key):
+@st.cache_data(ttl=3600)
+def _executar_chamada_perplexity_protegida(df_json, status_txt, chave_tempo):
     api_key = os.getenv("PERPLEXITY_API_KEY") or st.secrets.get("PERPLEXITY_API_KEY")
-    df = pd.read_json(df_json)
+    df = pd.read_json(io.StringIO(df_json))
 
     if not api_key:
         return generate_heuristic_fallback(df, status_txt)
