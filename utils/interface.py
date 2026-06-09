@@ -4,8 +4,6 @@ import os
 from services.sheets_service import get_dashboard_data
 from utils.chatbot import ask_gemini_about_data
 
-# Procure por esta função dentro de utils/interface.py e atualize-a:
-
 def inject_custom_css(is_presentation_mode=False):
     """Injeta o CSS customizado para garantir responsividade e design premium."""
     css_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "styles", "custom.css")
@@ -26,10 +24,10 @@ def inject_custom_css(is_presentation_mode=False):
 
 def render_sidebar(show_chat=True):
     """Renderiza a barra lateral completa com logos, status, filtros e o Chatbot Inteligente."""
-    # 1. Carregamento dos dados brutos vindos do barramento de dados
+    # OBRIGATÓRIO: Carregamento dos dados brutos master vindos do Sheets
     df_raw = get_dashboard_data()
     
-    # 2. Renderização Visual da Logo do Instituto Bold
+    # Renderização Visual da Logo do Instituto Bold
     st.sidebar.markdown(
         """
         <div style="text-align: center; margin-bottom: 20px;">
@@ -40,7 +38,7 @@ def render_sidebar(show_chat=True):
         unsafe_allow_html=True
     )
     
-    # 3. Painel de Status de Sincronização de Dados (Badge Verde)
+    # Painel de Status de Sincronização de Dados (Badge Verde)
     total_registros = len(df_raw) if df_raw is not None else 0
     st.sidebar.markdown(
         f"""
@@ -53,7 +51,7 @@ def render_sidebar(show_chat=True):
         unsafe_allow_html=True
     )
     
-    # 4. Filtros Estratégicos da Interface
+    # Filtros Estratégicos da Interface
     is_exec_mode = st.sidebar.checkbox("Modo Executivo (Apresentação)", value=False)
     
     status_sel = st.sidebar.selectbox(
@@ -61,49 +59,47 @@ def render_sidebar(show_chat=True):
         ["Todos", "Aprovados", "Reprovados"]
     )
     
-    # Injeta as regras de estilo de tela dinamicamente
     inject_custom_css(is_exec_mode)
     
-    # 5. Motor de Filtragem do Dataframe
+    # Motor de Filtragem exclusivo para as telas/gráficos
     if df_raw is None or df_raw.empty:
         df_filtered = df_raw
     else:
         df_filtered = df_raw.copy()
+        col_status_id = next((c for c in df_filtered.columns if c.lower() in ['status', 'status_processamento']), "status")
+        
         if status_sel == "Aprovados":
-            df_filtered = df_filtered[df_filtered["status"].astype(str).str.strip().str.lower() == "aprovado"]
+            df_filtered = df_filtered[df_filtered[col_status_id].astype(str).str.strip().str.lower().str.contains("aprov")]
         elif status_sel == "Reprovados":
-            df_filtered = df_filtered[df_filtered["status"].astype(str).str.strip().str.lower() == "reprovado"]
+            df_filtered = df_filtered[df_filtered[col_status_id].astype(str).str.strip().str.lower().str.contains("reprov")]
 
-    # 6. === ASSISTENTE DE CHAT COM IA INTEGRADO (BLINDADO) ===
-    if show_chat and df_filtered is not None and not df_filtered.empty:
+    # === ASSISTENTE DE CHAT COM IA INTEGRADO (CONECTADO À BASE MASTER RAW) ===
+    if show_chat and df_raw is not None and not df_raw.empty:
         st.sidebar.markdown("---")
         with st.sidebar.expander("💬 Assistente IA - Pergunte aos Dados", expanded=False):
             st.markdown("<small style='opacity:0.7;'>Faça perguntas em linguagem natural sobre os dados da planilha.</small>", unsafe_allow_html=True)
             
-            # Inicializa o histórico do chat na memória do Streamlit
             if "chat_history" not in st.session_state:
                 st.session_state.chat_history = []
 
-            # Exibe mensagens anteriores
             for msg in st.session_state.chat_history:
                 with st.chat_message(msg["role"]):
                     st.write(msg["content"])
 
-            # Campo de entrada de texto (Input)
-            user_query = st.chat_input("Ex: Quantas mulheres de Uberlândia?")
+            user_query = st.chat_input("Ex: Quem são os clusters dos reprovados?")
             
             if user_query:
                 with st.chat_message("user"):
                     st.write(user_query)
                 st.session_state.chat_history.append({"role": "user", "content": user_query})
 
-                # Processa a resposta com o Gemini
                 with st.chat_message("assistant"):
                     with st.spinner("Analisando planilha..."):
-                        bot_response = ask_gemini_about_data(user_query, df_filtered)
+                        # SOLUÇÃO DA CONTAGEM: Passamos o df_raw (base completa) para a IA nunca zerar os reprovados
+                        bot_response = ask_gemini_about_data(user_query, df_raw)
                         st.write(bot_response)
                 st.session_state.chat_history.append({"role": "assistant", "content": bot_response})
-                
+                st.sidebar.utility = True
                 st.rerun()
 
     return df_filtered, is_exec_mode, status_sel
